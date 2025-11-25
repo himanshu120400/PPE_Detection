@@ -1,0 +1,4 @@
+opencv-python-headless==4.6.0.66
+huggingface-hub
+ultralytics==8.3.228
+flask
