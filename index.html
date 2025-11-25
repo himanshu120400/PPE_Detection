@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>PPE Compliance System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background:#f5f7fa; }
+        .card { border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+        .snapshot-img { width: 100%; height: auto; border-radius: 5px; }
+        .alert-item { font-size: 0.85rem; padding: 5px 0; border-bottom: 1px solid #eee; }
+        .stop-btn { transition: background-color 0.3s; }
+        .stop-btn.stopping { background-color: #ffc107; border-color: #ffc107; }
+    </style>
+</head>
+<body class="p-5">
+
+<div class="container">
+    <h2 class="text-center mb-5">PPE Compliance Detection</h2>
+    
+    <div class="card p-4 mb-4">
+        <h5 class="fw-semibold">Enter Stream Source</h5>
+        <div class="input-group mb-3">
+            <input id="src" class="form-control" value="rtsp://analytic:Analyt1%21@10.1.3.87/analytic/media.smp">
+            <button id="open" class="btn btn-primary">Start Detection Feed</button>
+        </div>
+        <button id="stop-btn" class="btn btn-danger stop-btn" style="display:none;">Stop Detection</button>
+    </div>
+    
+    <div id="feed-container" class="mt-5 d-none">
+        
+        <div class="card p-3 mb-4 bg-primary text-white">
+            <h4 class="mb-0">
+                Active Persons Detected: 
+                <span id="personCount" class="badge bg-light text-primary fw-bold fs-5">0</span>
+            </h4>
+        </div>
+
+        <h3 class="fw-semibold">Live Feed: <span id="currentSource"></span></h3>
+        <div class="video-container mb-5">
+            <img id="stream" style="width:100%; display:block; border: 1px solid #ccc;">
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <h4 class="fw-semibold">Recent Alerts (Log)</h4>
+                <div class="card p-3" style="max-height: 400px; overflow-y: auto;">
+                    <div id="alerts-log">Loading alerts...</div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <h4 class="fw-semibold">Violation Snapshots</h4>
+                <div class="card p-3">
+                    <div id="snapshots-grid" class="row g-2">Loading snapshots...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let intervalIds = [];
+
+async function loadSnapshots() {
+    try {
+        const r = await fetch("/api/snapshots");
+        const filenames = await r.json();
+        const grid = document.getElementById("snapshots-grid");
+
+        if (filenames.length === 0) {
+            grid.innerHTML = "<p class='text-muted'>No violation snapshots saved yet.</p>";
+            return;
+        }
+
+        grid.innerHTML = filenames.map(filename => {
+            const timestamp = filename.replace('alert_', '').replace('.jpg', '');
+            return `
+                <div class="col-4">
+                    <small class="text-muted d-block" style="font-size: 0.7rem;">${timestamp}</small>
+                    <a href="/snapshots/${filename}" target="_blank">
+                        <img src="/snapshots/${filename}" class="snapshot-img">
+                    </a>
+                </div>
+            `;
+        }).join("");
+    } catch (e) {
+        document.getElementById("snapshots-grid").innerHTML = "<p class='text-danger'>Error loading snapshots.</p>";
+    }
+}
+
+async function loadAlerts() {
+    try {
+        const r = await fetch("/api/alerts");
+        const alerts = await r.json();
+        const logDiv = document.getElementById("alerts-log");
+        
+        if (alerts.length === 0 || (alerts.length === 1 && alerts[0].includes("Log file inaccessible"))) {
+            logDiv.innerHTML = alerts.map(a => `<div class='alert-item text-danger'>${a}</div>`).join("") || "<p class='text-muted'>No recent violations in the log.</p>";
+            return;
+        }
+
+        logDiv.innerHTML = alerts.reverse().map(alert => {
+            const html = alert.replace("VIOLATION", "<strong>VIOLATION</strong>");
+            return `<div class='alert-item'>${html}</div>`;
+        }).join("");
+
+    } catch (e) {
+        document.getElementById("alerts-log").innerHTML = "<p class='text-danger'>Error loading alerts log.</p>";
+    }
+}
+
+async function loadCount() {
+    try {
+        const r = await fetch("/api/count");
+        const data = await r.json();
+        document.getElementById("personCount").innerText = data.person_count || 0;
+    } catch (e) {
+        document.getElementById("personCount").innerText = "---";
+    }
+}
+
+async function stopFeed() {
+    document.getElementById("stop-btn").innerText = "Stopping...";
+    document.getElementById("stop-btn").classList.add('stopping');
+    
+    await fetch("/stop");
+    
+    intervalIds.forEach(clearInterval);
+    
+    document.getElementById("stream").src = "";
+    document.getElementById("open").disabled = false;
+    document.getElementById("open").innerText = "Start Detection Feed";
+    document.getElementById("stop-btn").style.display = 'none';
+    document.getElementById("stop-btn").classList.remove('stopping');
+    document.getElementById("stop-btn").innerText = "Stop Detection";
+}
+
+document.getElementById("open").onclick = ()=>{
+    const src = document.getElementById("src").value;
+    const encodedSrc = encodeURIComponent(src);
+    
+    document.getElementById("currentSource").innerText = src;
+    document.getElementById("feed-container").classList.remove('d-none');
+    
+    document.getElementById("stream").src = "/video?src=" + encodedSrc;
+    
+    loadSnapshots();
+    loadAlerts();
+    loadCount();     
+    intervalIds.forEach(clearInterval);    
+    intervalIds.push(setInterval(loadSnapshots, 5000)); // Every 5s
+    intervalIds.push(setInterval(loadAlerts, 3000));   // Every 3s
+    intervalIds.push(setInterval(loadCount, 1000));    // Every 1s    
+    document.getElementById("open").disabled = true;
+    document.getElementById("open").innerText = "Detection Running...";
+    document.getElementById("stop-btn").style.display = 'block';
+};
+
+document.getElementById("stop-btn").onclick = stopFeed;
+</script>
+
+</body>
+</html>
