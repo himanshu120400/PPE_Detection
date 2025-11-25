@@ -1,6 +1,4 @@
-LIVE_FEED = "rtsp://analytic:Analyt1%21@10.1.3.87/analytic/media.smp"
-
-VIDEO_SOURCE = "rtsp://analytic:Analyt1%21@10.1.3.87/analytic/media.smp"
+LIVE_FEED = ""
 MODEL_REPO = "keremberke/yolov8m-hard-hat-detection"
 MODEL_FILE = "best.pt"
 
